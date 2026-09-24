@@ -1357,6 +1357,7 @@ const CloudStore = {
 
   // ===== 保存到云端 =====
   async save(data) {
+    console.log('[CloudStore.save] called, gistId:', this.gistId || 'EMPTY');
     const jsonStr = JSON.stringify(data, null, 2);
     const body = {
       description: '投后管理系统数据备份',
@@ -1407,6 +1408,7 @@ const CloudStore = {
       return resp.ok;
     } catch (e) {
       console.error('云端保存失败:', e);
+      showToast('云端保存失败: ' + e.message, 'error');
       return false;
     }
   },
@@ -4775,14 +4777,26 @@ async function loadFromCloud() {
 
 let _cloudSaveTimer = null;
 function syncToCloud() {
-  if (!CloudStore.token || CloudStore.token.includes('xxxx')) return;
+  console.log('[syncToCloud] called, token:', CloudStore.token ? 'OK(' + CloudStore.token.length + ')' : 'EMPTY');
+  if (!CloudStore.token || CloudStore.token.length < 10) {
+    console.log('[syncToCloud] SKIP - no valid token');
+    return;
+  }
   if (_cloudSaveTimer) clearTimeout(_cloudSaveTimer);
   _cloudSaveTimer = setTimeout(async () => {
-    const keys = ['projects','quarterly','risks','documents','users','investReturns','todos','boardMeetings','interviews','bizEvents','exitInfo'];
-    const data = { updatedAt: new Date().toISOString() };
-    keys.forEach(k => { data[k] = JSON.parse(localStorage.getItem('pims_' + k) || '[]'); });
-    const ok = await CloudStore.save(data);
-    if (ok) showToast('已保存到云端');
+    console.log('[syncToCloud] saving to cloud...');
+    try {
+      const keys = ['projects','quarterly','risks','documents','users','investReturns','todos','boardMeetings','interviews','bizEvents','exitInfo'];
+      const data = { updatedAt: new Date().toISOString() };
+      keys.forEach(k => { data[k] = JSON.parse(localStorage.getItem('pims_' + k) || '[]'); });
+      console.log('[syncToCloud] data keys:', Object.keys(data), 'projects:', data.projects.length);
+      const ok = await CloudStore.save(data);
+      console.log('[syncToCloud] save result:', ok);
+      if (ok) showToast('已保存到云端');
+    } catch(e) {
+      console.error('[syncToCloud] ERROR:', e);
+      showToast('云端保存失败: ' + e.message, 'error');
+    }
   }, 1500);
 }
 
