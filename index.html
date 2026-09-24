@@ -214,19 +214,33 @@ const FeishuAPI = {
   token: null,
   tokenExpiry: 0,
 
+  // 获取配置（优先使用 localStorage 中保存的）
+  getCfg() {
+    const saved = JSON.parse(localStorage.getItem('feishu_cfg') || '{}');
+    return {
+      appId: saved.appId || FEISHU_CONFIG.appId,
+      appSecret: saved.appSecret || FEISHU_CONFIG.appSecret,
+      baseId: saved.baseId || FEISHU_CONFIG.baseId,
+      assetTableId: saved.assetTableId || FEISHU_CONFIG.assetTableId,
+      dividendTableId: saved.dividendTableId || FEISHU_CONFIG.dividendTableId,
+      baseUrl: FEISHU_CONFIG.baseUrl
+    };
+  },
+
   // 获取 tenant_access_token
   // 📌 文档：https://open.feishu.cn/document/server-docs/authentication-management/access-token/tenant_access_token_internal
   async getToken() {
     if (this.token && Date.now() < this.tokenExpiry) return this.token;
 
+    const cfg = this.getCfg();
     // ⚠️ 鉴权逻辑：用 appId + appSecret 换取 token
     //    生产环境应由后端完成此步骤，前端只调用后端接口
-    const resp = await fetch(`${FEISHU_CONFIG.baseUrl}/auth/v3/tenant_access_token/internal`, {
+    const resp = await fetch(`${cfg.baseUrl}/auth/v3/tenant_access_token/internal`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        app_id: FEISHU_CONFIG.appId,
-        app_secret: FEISHU_CONFIG.appSecret
+        app_id: cfg.appId,
+        app_secret: cfg.appSecret
       })
     });
     const data = await resp.json();
@@ -239,6 +253,7 @@ const FeishuAPI = {
   // 通用请求封装
   async request(method, path, body = null) {
     const token = await this.getToken();
+    const cfg = this.getCfg();
     const opts = {
       method,
       headers: {
@@ -247,7 +262,7 @@ const FeishuAPI = {
       }
     };
     if (body) opts.body = JSON.stringify(body);
-    const resp = await fetch(`${FEISHU_CONFIG.baseUrl}${path}`, opts);
+    const resp = await fetch(`${cfg.baseUrl}${path}`, opts);
     const data = await resp.json();
     if (data.code !== 0) throw new Error(`API错误: ${data.msg} (code=${data.code})`);
     return data.data;
@@ -260,59 +275,67 @@ const FeishuAPI = {
   // 📌 删除记录：https://open.feishu.cn/document/server-docs/docs/bitable-v1/app-table-record/delete
 
   async listAssets() {
+    const cfg = this.getCfg();
     const data = await this.request('POST',
-      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.assetTableId}/records/search`,
+      `/bitable/v1/apps/${cfg.baseId}/tables/${cfg.assetTableId}/records/search`,
       { page_size: 500 }
     );
     return (data.items || []).map(r => ({ recordId: r.record_id, fields: r.fields }));
   },
 
   async createAsset(fields) {
+    const cfg = this.getCfg();
     return this.request('POST',
-      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.assetTableId}/records`,
+      `/bitable/v1/apps/${cfg.baseId}/tables/${cfg.assetTableId}/records`,
       { fields }
     );
   },
 
   async updateAsset(recordId, fields) {
+    const cfg = this.getCfg();
     return this.request('PUT',
-      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.assetTableId}/records/${recordId}`,
+      `/bitable/v1/apps/${cfg.baseId}/tables/${cfg.assetTableId}/records/${recordId}`,
       { fields }
     );
   },
 
   async deleteAsset(recordId) {
+    const cfg = this.getCfg();
     return this.request('DELETE',
-      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.assetTableId}/records/${recordId}`
+      `/bitable/v1/apps/${cfg.baseId}/tables/${cfg.assetTableId}/records/${recordId}`
     );
   },
 
   // ===== 分红表 CRUD =====
   async listDividends() {
+    const cfg = this.getCfg();
     const data = await this.request('POST',
-      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.dividendTableId}/records/search`,
+      `/bitable/v1/apps/${cfg.baseId}/tables/${cfg.dividendTableId}/records/search`,
       { page_size: 500 }
     );
     return (data.items || []).map(r => ({ recordId: r.record_id, fields: r.fields }));
   },
 
   async createDividend(fields) {
+    const cfg = this.getCfg();
     return this.request('POST',
-      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.dividendTableId}/records`,
+      `/bitable/v1/apps/${cfg.baseId}/tables/${cfg.dividendTableId}/records`,
       { fields }
     );
   },
 
   async updateDividend(recordId, fields) {
+    const cfg = this.getCfg();
     return this.request('PUT',
-      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.dividendTableId}/records/${recordId}`,
+      `/bitable/v1/apps/${cfg.baseId}/tables/${cfg.dividendTableId}/records/${recordId}`,
       { fields }
     );
   },
 
   async deleteDividend(recordId) {
+    const cfg = this.getCfg();
     return this.request('DELETE',
-      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.dividendTableId}/records/${recordId}`
+      `/bitable/v1/apps/${cfg.baseId}/tables/${cfg.dividendTableId}/records/${recordId}`
     );
   },
 
@@ -861,6 +884,16 @@ async function doDeleteDividend(recordId) {
 //  系统配置
 // ============================================================
 function renderConfig(container) {
+  // 从 localStorage 读取已保存的配置（如果有）
+  const saved = JSON.parse(localStorage.getItem('feishu_cfg') || '{}');
+  const cfg = {
+    appId: saved.appId || FEISHU_CONFIG.appId,
+    appSecret: saved.appSecret || FEISHU_CONFIG.appSecret,
+    baseId: saved.baseId || FEISHU_CONFIG.baseId,
+    assetTableId: saved.assetTableId || FEISHU_CONFIG.assetTableId,
+    dividendTableId: saved.dividendTableId || FEISHU_CONFIG.dividendTableId
+  };
+
   container.innerHTML = `
     <div class="fade-in max-w-2xl space-y-6">
       <!-- 飞书参数 -->
@@ -869,29 +902,28 @@ function renderConfig(container) {
         <div class="space-y-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">App ID</label>
-            <input type="text" id="cfg_appid" value="${FEISHU_CONFIG.appId}" class="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50" readonly>
+            <input type="text" id="cfg_appid" value="${cfg.appId}" placeholder="cli_xxxxxxxxxx" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500">
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">App Secret</label>
-            <input type="password" id="cfg_secret" value="${FEISHU_CONFIG.appSecret}" class="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50" readonly>
+            <input type="password" id="cfg_secret" value="${cfg.appSecret}" placeholder="点击获取后填入" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500">
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">BaseId（多维表格ID）</label>
-            <input type="text" id="cfg_baseid" value="${FEISHU_CONFIG.baseId}" class="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50" readonly>
+            <input type="text" id="cfg_baseid" value="${cfg.baseId}" placeholder="bascnXXXXXXXX" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500">
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">标的表 TableId</label>
-              <input type="text" value="${FEISHU_CONFIG.assetTableId}" class="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50" readonly>
+              <input type="text" id="cfg_asset_tbl" value="${cfg.assetTableId}" placeholder="tblXXXXXXXX" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500">
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">分红表 TableId</label>
-              <input type="text" value="${FEISHU_CONFIG.dividendTableId}" class="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50" readonly>
+              <input type="text" id="cfg_div_tbl" value="${cfg.dividendTableId}" placeholder="tblYYYYYYYY" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500">
             </div>
           </div>
-          <div class="text-xs text-gray-400">
-            💡 参数在代码顶部 <code class="bg-gray-100 px-1 rounded">FEISHU_CONFIG</code> 中配置，修改后刷新页面生效
-          </div>
+          <button onclick="saveFeishuConfig()" class="px-5 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700">💾 保存配置</button>
+          <div class="text-xs text-gray-400">💡 保存后自动生效，配置存储在浏览器中</div>
         </div>
       </div>
 
@@ -926,6 +958,23 @@ function renderConfig(container) {
       </div>
     </div>
   `;
+}
+
+async function saveFeishuConfig() {
+  const cfg = {
+    appId: document.getElementById('cfg_appid').value.trim(),
+    appSecret: document.getElementById('cfg_secret').value.trim(),
+    baseId: document.getElementById('cfg_baseid').value.trim(),
+    assetTableId: document.getElementById('cfg_asset_tbl').value.trim(),
+    dividendTableId: document.getElementById('cfg_div_tbl').value.trim()
+  };
+  localStorage.setItem('feishu_cfg', JSON.stringify(cfg));
+  showToast('飞书配置已保存，正在测试连接...');
+  // 重置 token 使新配置生效
+  FeishuAPI.token = null;
+  FeishuAPI.tokenExpiry = 0;
+  // 自动测试连接
+  setTimeout(() => testConnection(), 500);
 }
 
 async function testConnection() {
