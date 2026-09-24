@@ -1332,15 +1332,17 @@ const CloudStore = {
   gistId: '',    // 🔴 首次保存后自动创建，把生成的 ID 填回来永久绑定
   fileName: 'post-investment-data.json',
 
+  // ===== 清理非ASCII字符（防止 fetch 报错） =====
+  sanitize(str) {
+    return (str || '').replace(/[^\x00-\x7F]/g, '');
+  },
+
   // ===== 获取云端数据 =====
   async fetch() {
-    if (!this.gistId) {
-      // 还没绑定 Gist，返回本地数据
-      return null;
-    }
+    if (!this.gistId) return null;
     try {
       const resp = await fetch(`https://api.github.com/gists/${this.gistId}`, {
-        headers: { 'Authorization': `token ${this.token}`, 'Accept': 'application/vnd.github.v3+json' }
+        headers: { 'Authorization': `token ${this.sanitize(this.token)}`, 'Accept': 'application/vnd.github.v3+json' }
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const gist = await resp.json();
@@ -1370,14 +1372,14 @@ const CloudStore = {
         // 更新已有 Gist
         resp = await fetch(`https://api.github.com/gists/${this.gistId}`, {
           method: 'PATCH',
-          headers: { 'Authorization': `token ${this.token}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github.v3+json' },
+          headers: { 'Authorization': `token ${this.sanitize(this.token)}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github.v3+json' },
           body: JSON.stringify(body)
         });
       } else {
         // 首次创建 Gist
         resp = await fetch('https://api.github.com/gists', {
           method: 'POST',
-          headers: { 'Authorization': `token ${this.token}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github.v3+json' },
+          headers: { 'Authorization': `token ${this.sanitize(this.token)}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github.v3+json' },
           body: JSON.stringify(body)
         });
         if (resp.ok) {
@@ -1399,7 +1401,7 @@ const CloudStore = {
   async test() {
     try {
       const resp = await fetch('https://api.github.com/user', {
-        headers: { 'Authorization': `token ${this.token}`, 'Accept': 'application/vnd.github.v3+json' }
+        headers: { 'Authorization': `token ${this.sanitize(this.token)}`, 'Accept': 'application/vnd.github.v3+json' }
       });
       if (resp.ok) {
         const user = await resp.json();
@@ -3069,10 +3071,22 @@ function doDeleteUser(id) {
 
 // ===== 云端配置函数 =====
 function saveCloudConfig() {
-  CloudStore.token = document.getElementById('cloud_token').value.trim();
-  CloudStore.gistId = document.getElementById('cloud_gist').value.trim();
-  localStorage.setItem('gist_id', CloudStore.gistId);
-  showToast('云端配置已保存');
+  // 清理 Token 中的非 ASCII 字符（防止 fetch 报错）
+  let token = document.getElementById('cloud_token').value.trim();
+  token = token.replace(/[^\x00-\x7F]/g, ''); // 移除非 ASCII 字符
+  let gistId = document.getElementById('cloud_gist').value.trim();
+  gistId = gistId.replace(/[^\x00-\x7F]/g, '');
+  
+  if (!token) { showToast('请输入 GitHub Token', 'warning'); return; }
+  if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
+    showToast('Token 格式不正确，应以 ghp_ 开头', 'warning');
+    return;
+  }
+  
+  CloudStore.token = token;
+  CloudStore.gistId = gistId;
+  localStorage.setItem('gist_id', gistId);
+  showToast('云端配置已保存（Token 长度: ' + token.length + '）');
 }
 
 async function testCloudConn() {
