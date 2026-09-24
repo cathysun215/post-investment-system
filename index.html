@@ -1385,7 +1385,7 @@ const CloudStore = {
         if (resp.ok) {
           const gist = await resp.json();
           this.gistId = gist.id;
-          localStorage.setItem('gist_id', gist.id);
+          this.saveGistId(gist.id);
           console.log('✅ Gist 已创建，ID:', gist.id);
           // 弹窗提醒用户保存 Gist ID
           openModal('🎉 云端存储已初始化', `
@@ -1429,8 +1429,25 @@ const CloudStore = {
 
   // ===== 恢复 Gist ID =====
   init() {
-    const saved = localStorage.getItem('gist_id');
-    if (saved && !this.gistId) this.gistId = saved;
+    // 恢复 gist_id
+    const savedGist = localStorage.getItem('gist_id');
+    if (savedGist && !this.gistId) this.gistId = savedGist;
+    // 恢复 token（关键！否则刷新后同步失效）
+    const savedToken = localStorage.getItem('gh_token');
+    if (savedToken) this.token = savedToken;
+    console.log('[CloudStore] init - token:', this.token ? 'OK(' + this.token.length + ')' : 'EMPTY', 'gistId:', this.gistId || 'EMPTY');
+  },
+
+  // 保存 token 到 localStorage
+  saveToken(token) {
+    this.token = token;
+    localStorage.setItem('gh_token', token);
+  },
+
+  // 保存 gistId 到 localStorage
+  saveGistId(id) {
+    this.gistId = id;
+    localStorage.setItem('gist_id', id);
   }
 };
 
@@ -3097,9 +3114,8 @@ function saveCloudConfig() {
     return;
   }
   
-  CloudStore.token = token;
-  CloudStore.gistId = gistId;
-  localStorage.setItem('gist_id', gistId);
+  CloudStore.saveToken(token);
+  CloudStore.saveGistId(gistId);
   showToast('云端配置已保存（Token 长度: ' + token.length + '）');
 }
 
