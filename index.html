@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>股权投资投后管理系统 · 飞书版</title>
+<!-- Tailwind CSS CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        primary: { 50:'#eff6ff',100:'#dbeafe',200:'#bfdbfe',300:'#93c5fd',400:'#60a5fa',500:'#3b82f6',600:'#2563eb',700:'#1d4ed8',800:'#1e40af',900:'#1e3a5f' },
+        navy: '#0f2b4c',
+        deep: '#0a1f3d',
+        brand: '#1a3a5c',
+        accent: '#c8a45c',
+      }
+    }
+  }
+}
+</script>
+<style>
+  body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif; }
+  .fade-in { animation: fadeIn .3s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+  .toast-enter { animation: toastIn .35s ease; }
+  @keyframes toastIn { from{opacity:0;transform:translateX(30px)} to{opacity:1;transform:none} }
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
+  input[type=number] { -moz-appearance:textfield; }
+  .sidebar-link.active { background:#1d4ed8; color:#fff; }
+  ::-webkit-scrollbar { width:6px; }
+  ::-webkit-scrollbar-thumb { background:#c1c9d4; border-radius:3px; }
+</style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+<!-- ============================================================
+  🔧 飞书配置区 —— 部署前请替换以下参数
+  ============================================================
+  📌 飞书多维表格API文档参考地址：
+     https://open.feishu.cn/document/server-docs/docs/bitable-v1/bitable-overview
+     https://open.feishu.cn/document/server-docs/authentication-management/access-token/tenant_access_token_internal
+
+  ⚠️ 安全警告：
+     前端仅做交互和数据展示，鉴权逻辑已在下方注释标注。
+     生产环境请务必使用后端中转API，避免飞书AppSecret暴露在前端！
+     推荐架构：前端 → 你的后端服务 → 飞书API（后端持有密钥）
+     本代码仅供开发/内网演示使用。
+  ============================================================ -->
+<script>
+const FEISHU_CONFIG = {
+  // ===== 在此处替换你的飞书应用凭证 =====
+  appId:     'cli_xxxxxxxxxxxxxxxx',    // 🔴 替换为你的飞书 App ID（飞书开放平台 → 应用 → 凭证与基础信息）
+  appSecret: 'xxxxxxxxxxxxxxxxxxxxxxxx', // 🔴 替换为你的飞书 App Secret（⚠️ 生产环境必须放后端！）
+  // ===== 在此处替换你的多维表格信息 =====
+  baseId:    'bascnXXXXXXXXXXXXXXXX',   // 🔴 替换为多维表格 BaseId（多维表格URL中 /base/ 后面的字符串）
+  assetTableId:  'tblXXXXXXXXXXXXXXXX', // 🔴 替换为「标的表」TableId
+  dividendTableId: 'tblYYYYYYYYYYYYYYYY', // 🔴 替换为「分红表」TableId
+  // ===== API地址（一般不需要修改） =====
+  baseUrl: 'https://open.feishu.cn/open-apis'
+};
+
+/*
+  ============================================================
+  ⚠️ 鉴权说明（重要）
+  ============================================================
+  本页面通过 tenant_access_token 鉴权访问飞书API：
+  1. 用 appId + appSecret 换取 tenant_access_token（有效期2小时）
+  2. 所有后续请求携带 Authorization: Bearer {token}
+
+  🔴 生产环境建议：
+     - 不要把 appSecret 写在前端代码中（会被任何人看到）
+     - 建议搭建简易后端（如 Serverless Function），由后端持有密钥并转发请求
+     - 前端只调用你自己的后端接口，后端再请求飞书API
+     - Vercel Serverless Functions / 云函数 / Nginx 反代均可实现
+
+  飞书鉴权文档：
+  https://open.feishu.cn/document/server-docs/authentication-management/access-token/tenant_access_token_internal
+  ============================================================
+*/
+</script>
+
+<!-- ==================== 布局 ==================== -->
+<div class="flex h-screen overflow-hidden">
+
+  <!-- 侧边栏 -->
+  <aside class="w-60 bg-navy text-white flex flex-col flex-shrink-0">
+    <div class="px-5 py-5 border-b border-white/10">
+      <h1 class="text-lg font-bold tracking-wide">📊 投后管理系统</h1>
+      <p class="text-xs text-blue-300 mt-1">飞书多维表格版</p>
+    </div>
+    <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <a href="#" data-page="dashboard" class="sidebar-link active flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-blue-200 hover:bg-white/10 transition">
+        <span>🏠</span> 投后看板
+      </a>
+      <a href="#" data-page="assets" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-blue-200 hover:bg-white/10 transition">
+        <span>📋</span> 标的台账
+      </a>
+      <a href="#" data-page="dividends" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-blue-200 hover:bg-white/10 transition">
+        <span>💰</span> 分红管理
+      </a>
+      <a href="#" data-page="config" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-blue-200 hover:bg-white/10 transition">
+        <span>⚙️</span> 系统配置
+      </a>
+    </nav>
+    <div class="px-5 py-3 border-t border-white/10 text-xs text-blue-300">
+      <div id="connStatus" class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-gray-500"></span> 未连接
+      </div>
+    </div>
+  </aside>
+
+  <!-- 主内容 -->
+  <main class="flex-1 flex flex-col overflow-hidden">
+    <!-- 顶栏 -->
+    <header class="bg-white border-b px-6 py-3 flex items-center justify-between flex-shrink-0">
+      <h2 id="pageTitle" class="text-lg font-bold text-gray-800">投后看板</h2>
+      <div class="flex items-center gap-3">
+        <span id="currentTime" class="text-sm text-gray-500"></span>
+        <button onclick="refreshData()" class="px-3 py-1.5 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition">🔄 刷新数据</button>
+      </div>
+    </header>
+
+    <!-- 页面内容 -->
+    <div id="pageContent" class="flex-1 overflow-y-auto p-6"></div>
+  </main>
+</div>
+
+<!-- ==================== 弹窗 ==================== -->
+<div id="modalOverlay" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col fade-in">
+    <div class="px-6 py-4 border-b flex items-center justify-between">
+      <h3 id="modalTitle" class="text-lg font-bold text-gray-800"></h3>
+      <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+    </div>
+    <div id="modalBody" class="px-6 py-4 flex-1 overflow-y-auto"></div>
+    <div id="modalFooter" class="px-6 py-4 border-t flex justify-end gap-3"></div>
+  </div>
+</div>
+
+<!-- ==================== Toast 容器 ==================== -->
+<div id="toastContainer" class="fixed top-4 right-4 z-[100] space-y-2"></div>
+
+<script>
+// ============================================================
+//  工具函数
+// ============================================================
+
+function showToast(msg, type = 'success') {
+  const colors = {
+    success: 'bg-emerald-500',
+    error: 'bg-red-500',
+    warning: 'bg-amber-500',
+    info: 'bg-blue-500'
+  };
+  const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+  const container = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = `toast-enter ${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg text-sm flex items-center gap-2 min-w-[240px]`;
+  el.innerHTML = `<span>${icons[type]}</span><span>${msg}</span>`;
+  container.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, 3000);
+}
+
+function openModal(title, bodyHtml, footerHtml) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = bodyHtml;
+  document.getElementById('modalFooter').innerHTML = footerHtml || '';
+  const overlay = document.getElementById('modalOverlay');
+  overlay.classList.remove('hidden');
+  overlay.classList.add('flex');
+}
+
+function closeModal() {
+  const overlay = document.getElementById('modalOverlay');
+  overlay.classList.add('hidden');
+  overlay.classList.remove('flex');
+}
+
+// 数字输入校验：只允许数字和小数点
+function numberOnly(el) {
+  el.value = el.value.replace(/[^\d.]/g, '').replace(/\.{2,}/g, '.').replace(/^(\d*\.\d*)\./g, '$1');
+}
+
+function fmtNum(v) {
+  if (v === null || v === undefined || v === '') return '—';
+  return Number(v).toLocaleString('zh-CN');
+}
+
+function fmtDate(v) {
+  if (!v) return '—';
+  try { return new Date(v).toLocaleDateString('zh-CN'); } catch { return v; }
+}
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ============================================================
+//  飞书 API 模块
+//  📌 飞书多维表格API文档：https://open.feishu.cn/document/server-docs/docs/bitable-v1/bitable-overview
+//
+//  ⚠️ 鉴权说明：
+//     当前通过 tenant_access_token 鉴权（appId + appSecret → token）。
+//     生产环境建议后端中转API，避免密钥暴露在前端。
+//     参考：https://open.feishu.cn/document/server-docs/authentication-management/access-token/tenant_access_token_internal
+// ============================================================
+
+const FeishuAPI = {
+  token: null,
+  tokenExpiry: 0,
+
+  // 获取 tenant_access_token
+  // 📌 文档：https://open.feishu.cn/document/server-docs/authentication-management/access-token/tenant_access_token_internal
+  async getToken() {
+    if (this.token && Date.now() < this.tokenExpiry) return this.token;
+
+    // ⚠️ 鉴权逻辑：用 appId + appSecret 换取 token
+    //    生产环境应由后端完成此步骤，前端只调用后端接口
+    const resp = await fetch(`${FEISHU_CONFIG.baseUrl}/auth/v3/tenant_access_token/internal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        app_id: FEISHU_CONFIG.appId,
+        app_secret: FEISHU_CONFIG.appSecret
+      })
+    });
+    const data = await resp.json();
+    if (data.code !== 0) throw new Error(`获取token失败: ${data.msg} (code=${data.code})`);
+    this.token = data.tenant_access_token;
+    this.tokenExpiry = Date.now() + (data.expire - 300) * 1000; // 提前5分钟过期
+    return this.token;
+  },
+
+  // 通用请求封装
+  async request(method, path, body = null) {
+    const token = await this.getToken();
+    const opts = {
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    if (body) opts.body = JSON.stringify(body);
+    const resp = await fetch(`${FEISHU_CONFIG.baseUrl}${path}`, opts);
+    const data = await resp.json();
+    if (data.code !== 0) throw new Error(`API错误: ${data.msg} (code=${data.code})`);
+    return data.data;
+  },
+
+  // ===== 标的表 CRUD =====
+  // 📌 新增记录：https://open.feishu.cn/document/server-docs/docs/bitable-v1/app-table-record/create
+  // 📌 查询记录：https://open.feishu.cn/document/server-docs/docs/bitable-v1/app-table-record/search
+  // 📌 更新记录：https://open.feishu.cn/document/server-docs/docs/bitable-v1/app-table-record/update
+  // 📌 删除记录：https://open.feishu.cn/document/server-docs/docs/bitable-v1/app-table-record/delete
+
+  async listAssets() {
+    const data = await this.request('POST',
+      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.assetTableId}/records/search`,
+      { page_size: 500 }
+    );
+    return (data.items || []).map(r => ({ recordId: r.record_id, fields: r.fields }));
+  },
+
+  async createAsset(fields) {
+    return this.request('POST',
+      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.assetTableId}/records`,
+      { fields }
+    );
+  },
+
+  async updateAsset(recordId, fields) {
+    return this.request('PUT',
+      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.assetTableId}/records/${recordId}`,
+      { fields }
+    );
+  },
+
+  async deleteAsset(recordId) {
+    return this.request('DELETE',
+      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.assetTableId}/records/${recordId}`
+    );
+  },
+
+  // ===== 分红表 CRUD =====
+  async listDividends() {
+    const data = await this.request('POST',
+      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.dividendTableId}/records/search`,
+      { page_size: 500 }
+    );
+    return (data.items || []).map(r => ({ recordId: r.record_id, fields: r.fields }));
+  },
+
+  async createDividend(fields) {
+    return this.request('POST',
+      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.dividendTableId}/records`,
+      { fields }
+    );
+  },
+
+  async updateDividend(recordId, fields) {
+    return this.request('PUT',
+      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.dividendTableId}/records/${recordId}`,
+      { fields }
+    );
+  },
+
+  async deleteDividend(recordId) {
+    return this.request('DELETE',
+      `/bitable/v1/apps/${FEISHU_CONFIG.baseId}/tables/${FEISHU_CONFIG.dividendTableId}/records/${recordId}`
+    );
+  },
+
+  // 测试连接
+  async testConnection() {
+    await this.getToken();
+    await this.listAssets();
+    return true;
+  }
+};
+
+// ============================================================
+//  全局状态
+// ============================================================
+let currentPage = 'dashboard';
+let assetsData = [];
+let dividendsData = [];
+
+const STATUS_MAP = {
+  '在投': 'bg-blue-100 text-blue-700',
+  '部分退出': 'bg-amber-100 text-amber-700',
+  '完全退出': 'bg-gray-200 text-gray-600',
+  '风险预警': 'bg-red-100 text-red-700'
+};
+
+const DIVIDEND_TYPES = ['现金分红', '转增股本', '其他'];
+const PROJECT_STATUSES = ['在投', '部分退出', '完全退出', '风险预警'];
+const ROUNDS = ['种子轮','天使轮','Pre-A轮','A轮','A+轮','Pre-B轮','B轮','B+轮','C轮','D轮','Pre-IPO'];
+
+// ============================================================
+//  页面路由
+// ============================================================
+const PAGE_TITLES = {
+  dashboard: '投后看板',
+  assets: '标的台账',
+  dividends: '分红管理',
+  config: '系统配置'
+};
+
+function navigateTo(page, e) {
+  if (e) e.preventDefault();
+  currentPage = page;
+  document.querySelectorAll('.sidebar-link').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === page);
+  });
+  document.getElementById('pageTitle').textContent = PAGE_TITLES[page] || page;
+  renderPage();
+}
+
+function renderPage() {
+  const container = document.getElementById('pageContent');
+  switch (currentPage) {
+    case 'dashboard': renderDashboard(container); break;
+    case 'assets': renderAssets(container); break;
+    case 'dividends': renderDividends(container); break;
+    case 'config': renderConfig(container); break;
+  }
+}
+
+// ============================================================
+//  数据加载
+// ============================================================
+async function refreshData() {
+  try {
+    showToast('正在从飞书加载数据...', 'info');
+    const [assets, dividends] = await Promise.all([
+      FeishuAPI.listAssets(),
+      FeishuAPI.listDividends()
+    ]);
+    assetsData = assets;
+    dividendsData = dividends;
+    updateConnStatus(true);
+    showToast(`数据加载完成：标的 ${assets.length} 条，分红 ${dividends.length} 条`);
+    renderPage();
+  } catch (err) {
+    updateConnStatus(false);
+    showToast(`数据加载失败: ${err.message}`, 'error');
+  }
+}
+
+function updateConnStatus(connected) {
+  const el = document.getElementById('connStatus');
+  if (connected) {
+    el.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400"></span> 已连接飞书';
+    el.className = 'flex items-center gap-2 text-emerald-300 text-xs';
+  } else {
+    el.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-400"></span> 连接失败';
+    el.className = 'flex items-center gap-2 text-red-300 text-xs';
+  }
+}
+
+// ============================================================
+//  投后看板
+// ============================================================
+function renderDashboard(container) {
+  const totalInvest = assetsData.reduce((s, a) => s + (Number(a.fields['投资金额']) || 0), 0);
+  const activeCount = assetsData.filter(a => a.fields['项目状态'] === '在投').length;
+  const warningCount = assetsData.filter(a => a.fields['项目状态'] === '风险预警').length;
+  const totalDividend = dividendsData.reduce((s, d) => s + (Number(d.fields['分红金额']) || 0), 0);
+
+  // 行业分布
+  const industryMap = {};
+  assetsData.forEach(a => {
+    const ind = a.fields['行业'] || '其他';
+    industryMap[ind] = (industryMap[ind] || 0) + 1;
+  });
+
+  // 状态分布
+  const statusMap = {};
+  assetsData.forEach(a => {
+    const st = a.fields['项目状态'] || '其他';
+    statusMap[st] = (statusMap[st] || 0) + 1;
+  });
+
+  container.innerHTML = `
+    <div class="fade-in space-y-6">
+      <!-- 统计卡片 -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 bg-blue-50 rounded-lg flex items-center justify-center text-xl">📋</div>
+            <div>
+              <div class="text-2xl font-bold text-gray-800">${assetsData.length}</div>
+              <div class="text-sm text-gray-500">标的总数</div>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 bg-blue-50 rounded-lg flex items-center justify-center text-xl">💰</div>
+            <div>
+              <div class="text-2xl font-bold text-gray-800">${fmtNum(totalInvest)}<span class="text-sm font-normal">万</span></div>
+              <div class="text-sm text-gray-500">投资总额</div>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 bg-emerald-50 rounded-lg flex items-center justify-center text-xl">🎯</div>
+            <div>
+              <div class="text-2xl font-bold text-gray-800">${activeCount}</div>
+              <div class="text-sm text-gray-500">在投项目</div>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 ${warningCount > 0 ? 'bg-red-50' : 'bg-emerald-50'} rounded-lg flex items-center justify-center text-xl">⚠️</div>
+            <div>
+              <div class="text-2xl font-bold ${warningCount > 0 ? 'text-red-600' : 'text-gray-800'}">${warningCount}</div>
+              <div class="text-sm text-gray-500">风险预警</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 图表 -->
+      <div class="grid lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
+          <h3 class="font-bold text-gray-800 mb-3">📊 行业分布</h3>
+          <div style="height:260px"><canvas id="chartIndustry"></canvas></div>
+        </div>
+        <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
+          <h3 class="font-bold text-gray-800 mb-3">📈 项目状态分布</h3>
+          <div style="height:260px"><canvas id="chartStatus"></canvas></div>
+        </div>
+      </div>
+
+      <!-- 最近分红 -->
+      <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
+        <h3 class="font-bold text-gray-800 mb-3">💰 分红概览</h3>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="text-center p-4 bg-emerald-50 rounded-lg">
+            <div class="text-2xl font-bold text-emerald-700">${fmtNum(totalDividend)}<span class="text-sm">万</span></div>
+            <div class="text-sm text-gray-500">累计分红金额</div>
+          </div>
+          <div class="text-center p-4 bg-blue-50 rounded-lg">
+            <div class="text-2xl font-bold text-blue-700">${dividendsData.length}</div>
+            <div class="text-sm text-gray-500">分红记录数</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  setTimeout(() => {
+    renderIndustryChart(industryMap);
+    renderStatusChart(statusMap);
+  }, 100);
+}
+
+function renderIndustryChart(data) {
+  const ctx = document.getElementById('chartIndustry');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(data),
+      datasets: [{ data: Object.values(data), backgroundColor: ['#1e3a5f','#2563eb','#60a5fa','#93c5fd','#c8a45c','#94a3b8','#64748b'], borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '55%',
+      plugins: { legend: { position: 'right', labels: { padding: 12, usePointStyle: true, font: { size: 12 } } } }
+    }
+  });
+}
+
+function renderStatusChart(data) {
+  const ctx = document.getElementById('chartStatus');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: Object.keys(data),
+      datasets: [{ label: '项目数', data: Object.values(data), backgroundColor: ['#2563eb','#f59e0b','#94a3b8','#ef4444'], borderRadius: 6, maxBarThickness: 50 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+    }
+  });
+}
+
+// ============================================================
+//  标的台账
+// ============================================================
+function renderAssets(container) {
+  container.innerHTML = `
+    <div class="fade-in">
+      <div class="flex items-center justify-between mb-4">
+        <div class="text-sm text-gray-500">共 ${assetsData.length} 条记录</div>
+        <button onclick="showAssetForm()" class="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition">＋ 新增标的</button>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">项目名称</th>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">行业</th>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">投资轮次</th>
+                <th class="px-4 py-3 text-right font-semibold text-gray-600">投资金额(万)</th>
+                <th class="px-4 py-3 text-right font-semibold text-gray-600">持股比例</th>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">投资日期</th>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">对接人</th>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">状态</th>
+                <th class="px-4 py-3 text-center font-semibold text-gray-600">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              ${assetsData.length === 0 ? '<tr><td colspan="9" class="px-4 py-12 text-center text-gray-400">暂无数据，请点击「新增标的」录入</td></tr>' :
+                assetsData.map(a => {
+                  const f = a.fields;
+                  const st = f['项目状态'] || '在投';
+                  return `<tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 font-semibold text-gray-800">${f['项目名称'] || '—'}</td>
+                    <td class="px-4 py-3 text-gray-600">${f['行业'] || '—'}</td>
+                    <td class="px-4 py-3 text-gray-600">${f['投资轮次'] || '—'}</td>
+                    <td class="px-4 py-3 text-right text-gray-800">${fmtNum(f['投资金额'])}</td>
+                    <td class="px-4 py-3 text-right text-gray-800">${f['持股比例'] ? f['持股比例'] + '%' : '—'}</td>
+                    <td class="px-4 py-3 text-gray-600">${fmtDate(f['投资日期'])}</td>
+                    <td class="px-4 py-3 text-gray-600">${f['标的对接人'] || '—'}</td>
+                    <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_MAP[st] || 'bg-gray-100 text-gray-600'}">${st}</span></td>
+                    <td class="px-4 py-3 text-center">
+                      <button onclick="showAssetForm('${a.recordId}')" class="text-primary-600 hover:underline text-xs mr-2">编辑</button>
+                      <button onclick="confirmDeleteAsset('${a.recordId}')" class="text-red-500 hover:underline text-xs">删除</button>
+                    </td>
+                  </tr>`;
+                }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function showAssetForm(recordId) {
+  const record = recordId ? assetsData.find(a => a.recordId === recordId) : null;
+  const f = record ? record.fields : {};
+
+  openModal(record ? '编辑标的' : '新增标的', `
+    <div class="space-y-4">
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">项目名称 <span class="text-red-500">*</span></label>
+          <input type="text" id="af_name" value="${f['项目名称'] || ''}" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" placeholder="请输入项目名称">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">行业</label>
+          <input type="text" id="af_industry" value="${f['行业'] || ''}" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="如：新能源">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">投资轮次</label>
+          <select id="af_round" class="w-full px-3 py-2 border rounded-lg text-sm">
+            ${ROUNDS.map(r => `<option value="${r}" ${f['投资轮次']===r?'selected':''}>${r}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">投资金额(万元) <span class="text-red-500">*</span></label>
+          <input type="text" id="af_amount" value="${f['投资金额'] || ''}" oninput="numberOnly(this)" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="仅输入数字">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">持股比例(%)</label>
+          <input type="text" id="af_equity" value="${f['持股比例'] || ''}" oninput="numberOnly(this)" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="如：15">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">投资日期</label>
+          <input type="date" id="af_date" value="${f['投资日期'] ? new Date(f['投资日期']).toISOString().slice(0,10) : ''}" class="w-full px-3 py-2 border rounded-lg text-sm">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">标的对接人</label>
+          <input type="text" id="af_contact" value="${f['标的对接人'] || ''}" class="w-full px-3 py-2 border rounded-lg text-sm">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">项目状态</label>
+          <select id="af_status" class="w-full px-3 py-2 border rounded-lg text-sm">
+            ${PROJECT_STATUSES.map(s => `<option value="${s}" ${f['项目状态']===s?'selected':''}>${s}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">会计核算方法</label>
+        <input type="text" id="af_accounting" value="${f['会计核算方法'] || ''}" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="如：长期股权投资-权益法">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">备注</label>
+        <textarea id="af_note" rows="2" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="备注信息">${f['备注'] || ''}</textarea>
+      </div>
+    </div>
+  `, `
+    <button onclick="closeModal()" class="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">取消</button>
+    <button onclick="saveAsset('${recordId || ''}')" class="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700">保存</button>
+  `);
+}
+
+async function saveAsset(recordId) {
+  const name = document.getElementById('af_name').value.trim();
+  const amount = document.getElementById('af_amount').value.trim();
+
+  // 表单校验
+  if (!name) { showToast('请输入项目名称', 'warning'); return; }
+  if (!amount || isNaN(Number(amount))) { showToast('请输入正确的投资金额（数字）', 'warning'); return; }
+
+  const fields = {
+    '项目名称': name,
+    '行业': document.getElementById('af_industry').value.trim(),
+    '投资轮次': document.getElementById('af_round').value,
+    '投资金额': Number(amount),
+    '持股比例': Number(document.getElementById('af_equity').value) || null,
+    '投资日期': document.getElementById('af_date').value ? new Date(document.getElementById('af_date').value).getTime() : null,
+    '标的对接人': document.getElementById('af_contact').value.trim(),
+    '项目状态': document.getElementById('af_status').value,
+    '会计核算方法': document.getElementById('af_accounting').value.trim(),
+    '备注': document.getElementById('af_note').value.trim()
+  };
+
+  try {
+    if (recordId) {
+      await FeishuAPI.updateAsset(recordId, fields);
+      showToast('标的更新成功');
+    } else {
+      await FeishuAPI.createAsset(fields);
+      showToast('标的新增成功');
+    }
+    closeModal();
+    await refreshData();
+  } catch (err) {
+    showToast(`保存失败: ${err.message}`, 'error');
+  }
+}
+
+function confirmDeleteAsset(recordId) {
+  openModal('确认删除', '<p class="text-gray-700">确定要删除这条标的记录吗？删除后不可恢复。</p>',
+    `<button onclick="closeModal()" class="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">取消</button>
+     <button onclick="doDeleteAsset('${recordId}')" class="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600">确认删除</button>`
+  );
+}
+
+async function doDeleteAsset(recordId) {
+  try {
+    await FeishuAPI.deleteAsset(recordId);
+    showToast('删除成功');
+    closeModal();
+    await refreshData();
+  } catch (err) {
+    showToast(`删除失败: ${err.message}`, 'error');
+  }
+}
+
+// ============================================================
+//  分红管理
+// ============================================================
+function renderDividends(container) {
+  container.innerHTML = `
+    <div class="fade-in">
+      <div class="flex items-center justify-between mb-4">
+        <div class="text-sm text-gray-500">共 ${dividendsData.length} 条记录</div>
+        <button onclick="showDividendForm()" class="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition">＋ 新增分红</button>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">关联标的</th>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">分红日期</th>
+                <th class="px-4 py-3 text-right font-semibold text-gray-600">分红金额(万)</th>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">分红类型</th>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">确认状态</th>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">备注</th>
+                <th class="px-4 py-3 text-center font-semibold text-gray-600">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              ${dividendsData.length === 0 ? '<tr><td colspan="7" class="px-4 py-12 text-center text-gray-400">暂无数据，请点击「新增分红」录入</td></tr>' :
+                dividendsData.map(d => {
+                  const f = d.fields;
+                  return `<tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 font-semibold text-gray-800">${f['关联标的'] || '—'}</td>
+                    <td class="px-4 py-3 text-gray-600">${fmtDate(f['分红日期'])}</td>
+                    <td class="px-4 py-3 text-right font-bold text-emerald-700">${fmtNum(f['分红金额'])}</td>
+                    <td class="px-4 py-3 text-gray-600">${f['分红类型'] || '—'}</td>
+                    <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-medium ${f['确认状态']==='已确认'?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}">${f['确认状态'] || '待确认'}</span></td>
+                    <td class="px-4 py-3 text-gray-600 max-w-[150px] truncate">${f['备注'] || '—'}</td>
+                    <td class="px-4 py-3 text-center">
+                      <button onclick="showDividendForm('${d.recordId}')" class="text-primary-600 hover:underline text-xs mr-2">编辑</button>
+                      <button onclick="confirmDeleteDividend('${d.recordId}')" class="text-red-500 hover:underline text-xs">删除</button>
+                    </td>
+                  </tr>`;
+                }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function showDividendForm(recordId) {
+  const record = recordId ? dividendsData.find(d => d.recordId === recordId) : null;
+  const f = record ? record.fields : {};
+
+  openModal(record ? '编辑分红' : '新增分红', `
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">关联标的 <span class="text-red-500">*</span></label>
+        <select id="df_asset" class="w-full px-3 py-2 border rounded-lg text-sm">
+          <option value="">请选择标的</option>
+          ${assetsData.map(a => `<option value="${a.fields['项目名称']}" ${f['关联标的']===a.fields['项目名称']?'selected':''}>${a.fields['项目名称']}</option>`).join('')}
+        </select>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">分红日期 <span class="text-red-500">*</span></label>
+          <input type="date" id="df_date" value="${f['分红日期'] ? new Date(f['分红日期']).toISOString().slice(0,10) : ''}" class="w-full px-3 py-2 border rounded-lg text-sm">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">分红金额(万元) <span class="text-red-500">*</span></label>
+          <input type="text" id="df_amount" value="${f['分红金额'] || ''}" oninput="numberOnly(this)" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="仅输入数字">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">分红类型</label>
+          <select id="df_type" class="w-full px-3 py-2 border rounded-lg text-sm">
+            ${DIVIDEND_TYPES.map(t => `<option value="${t}" ${f['分红类型']===t?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">确认状态</label>
+          <select id="df_status" class="w-full px-3 py-2 border rounded-lg text-sm">
+            <option value="待确认" ${f['确认状态']==='待确认'?'selected':''}>待确认</option>
+            <option value="已确认" ${f['确认状态']==='已确认'?'selected':''}>已确认</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">备注</label>
+        <textarea id="df_note" rows="2" class="w-full px-3 py-2 border rounded-lg text-sm">${f['备注'] || ''}</textarea>
+      </div>
+    </div>
+  `, `
+    <button onclick="closeModal()" class="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">取消</button>
+    <button onclick="saveDividend('${recordId || ''}')" class="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700">保存</button>
+  `);
+}
+
+async function saveDividend(recordId) {
+  const asset = document.getElementById('df_asset').value;
+  const amount = document.getElementById('df_amount').value.trim();
+
+  if (!asset) { showToast('请选择关联标的', 'warning'); return; }
+  if (!amount || isNaN(Number(amount))) { showToast('请输入正确的分红金额（数字）', 'warning'); return; }
+
+  const fields = {
+    '关联标的': asset,
+    '分红日期': document.getElementById('df_date').value ? new Date(document.getElementById('df_date').value).getTime() : null,
+    '分红金额': Number(amount),
+    '分红类型': document.getElementById('df_type').value,
+    '确认状态': document.getElementById('df_status').value,
+    '备注': document.getElementById('df_note').value.trim()
+  };
+
+  try {
+    if (recordId) {
+      await FeishuAPI.updateDividend(recordId, fields);
+      showToast('分红记录更新成功');
+    } else {
+      await FeishuAPI.createDividend(fields);
+      showToast('分红记录新增成功');
+    }
+    closeModal();
+    await refreshData();
+  } catch (err) {
+    showToast(`保存失败: ${err.message}`, 'error');
+  }
+}
+
+function confirmDeleteDividend(recordId) {
+  openModal('确认删除', '<p class="text-gray-700">确定要删除这条分红记录吗？</p>',
+    `<button onclick="closeModal()" class="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">取消</button>
+     <button onclick="doDeleteDividend('${recordId}')" class="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600">确认删除</button>`
+  );
+}
+
+async function doDeleteDividend(recordId) {
+  try {
+    await FeishuAPI.deleteDividend(recordId);
+    showToast('删除成功');
+    closeModal();
+    await refreshData();
+  } catch (err) {
+    showToast(`删除失败: ${err.message}`, 'error');
+  }
+}
+
+// ============================================================
+//  系统配置
+// ============================================================
+function renderConfig(container) {
+  container.innerHTML = `
+    <div class="fade-in max-w-2xl space-y-6">
+      <!-- 飞书参数 -->
+      <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+        <h3 class="font-bold text-gray-800 mb-4">🔧 飞书参数配置</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">App ID</label>
+            <input type="text" id="cfg_appid" value="${FEISHU_CONFIG.appId}" class="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50" readonly>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">App Secret</label>
+            <input type="password" id="cfg_secret" value="${FEISHU_CONFIG.appSecret}" class="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50" readonly>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">BaseId（多维表格ID）</label>
+            <input type="text" id="cfg_baseid" value="${FEISHU_CONFIG.baseId}" class="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50" readonly>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">标的表 TableId</label>
+              <input type="text" value="${FEISHU_CONFIG.assetTableId}" class="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50" readonly>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">分红表 TableId</label>
+              <input type="text" value="${FEISHU_CONFIG.dividendTableId}" class="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50" readonly>
+            </div>
+          </div>
+          <div class="text-xs text-gray-400">
+            💡 参数在代码顶部 <code class="bg-gray-100 px-1 rounded">FEISHU_CONFIG</code> 中配置，修改后刷新页面生效
+          </div>
+        </div>
+      </div>
+
+      <!-- 安全警告 -->
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-5">
+        <h4 class="font-bold text-amber-800 mb-2">⚠️ 安全警告</h4>
+        <ul class="text-sm text-amber-700 space-y-1.5">
+          <li>• <strong>不要</strong>将飞书 AppSecret 放在前端公开环境中</li>
+          <li>• 本页面为<strong>开发/演示版本</strong>，密钥直接配置在前端</li>
+          <li>• <strong>正式上线必须配套后端中转API</strong>，由后端持有密钥</li>
+          <li>• <strong>不推荐 GitHub Pages</strong> 直接部署（代码公开，密钥暴露）</li>
+          <li>• 推荐 Vercel Serverless Functions 做后端中转</li>
+        </ul>
+      </div>
+
+      <!-- API文档 -->
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-5">
+        <h4 class="font-bold text-blue-800 mb-2">📚 API文档参考</h4>
+        <ul class="text-sm text-blue-700 space-y-1">
+          <li>• <a href="https://open.feishu.cn/document/server-docs/docs/bitable-v1/bitable-overview" target="_blank" class="underline">飞书多维表格API总览</a></li>
+          <li>• <a href="https://open.feishu.cn/document/server-docs/authentication-management/access-token/tenant_access_token_internal" target="_blank" class="underline">获取 tenant_access_token</a></li>
+          <li>• <a href="https://open.feishu.cn/document/server-docs/docs/bitable-v1/app-table-record/create" target="_blank" class="underline">新增记录</a></li>
+          <li>• <a href="https://open.feishu.cn/document/server-docs/docs/bitable-v1/app-table-record/search" target="_blank" class="underline">查询记录</a></li>
+        </ul>
+      </div>
+
+      <!-- 连接测试 -->
+      <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+        <h3 class="font-bold text-gray-800 mb-4">🔌 连接测试</h3>
+        <button onclick="testConnection()" class="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700">测试飞书连接</button>
+        <div id="testResult" class="mt-3 text-sm"></div>
+      </div>
+    </div>
+  `;
+}
+
+async function testConnection() {
+  const result = document.getElementById('testResult');
+  result.innerHTML = '<span class="text-gray-500">正在测试...</span>';
+  try {
+    await FeishuAPI.testConnection();
+    result.innerHTML = '<span class="text-emerald-600">✅ 飞书连接成功！</span>';
+    updateConnStatus(true);
+    showToast('飞书连接成功');
+  } catch (err) {
+    result.innerHTML = `<span class="text-red-600">❌ 连接失败: ${err.message}</span>`;
+    updateConnStatus(false);
+    showToast('飞书连接失败', 'error');
+  }
+}
+
+// ============================================================
+//  初始化
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  // 绑定侧边栏导航
+  document.querySelectorAll('.sidebar-link').forEach(el => {
+    el.addEventListener('click', function(e) {
+      navigateTo(this.dataset.page, e);
+    });
+  });
+
+  // 更新时间
+  function updateTime() {
+    document.getElementById('currentTime').textContent = new Date().toLocaleString('zh-CN');
+  }
+  updateTime();
+  setInterval(updateTime, 60000);
+
+  // 渲染首页
+  renderDashboard(document.getElementById('pageContent'));
+
+  // 自动尝试连接
+  setTimeout(() => { refreshData(); }, 500);
+});
+
+// ESC 关闭弹窗
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
+</body>
+</html>
