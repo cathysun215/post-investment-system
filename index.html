@@ -1387,7 +1387,21 @@ const CloudStore = {
           this.gistId = gist.id;
           localStorage.setItem('gist_id', gist.id);
           console.log('✅ Gist 已创建，ID:', gist.id);
-          showToast('云端存储已初始化！Gist ID: ' + gist.id, 'info');
+          // 弹窗提醒用户保存 Gist ID
+          openModal('🎉 云端存储已初始化', `
+            <div style="text-align:center;padding:10px;">
+              <p style="font-size:1rem;margin-bottom:12px;">Gist 已创建成功！</p>
+              <p style="color:var(--text-secondary);font-size:.85rem;margin-bottom:8px;">请复制以下 Gist ID 保存到配置中：</p>
+              <div style="background:var(--bg-dark);padding:12px;border-radius:8px;font-family:monospace;font-size:1.1rem;color:var(--primary);word-break:break-all;user-select:all;">${gist.id}</div>
+              <p style="color:var(--text-muted);font-size:.78rem;margin-top:8px;">此 ID 绑定后换设备也能同步数据</p>
+            </div>
+          `, `
+            <button class="btn btn-primary" onclick="copyGistId('${gist.id}')">📋 复制 Gist ID</button>
+            <button class="btn btn-outline" onclick="closeModal()">关闭</button>
+          `);
+          // 同时自动填入配置框
+          const gistInput = document.getElementById('cloud_gist');
+          if (gistInput) gistInput.value = gist.id;
         }
       }
       return resp.ok;
@@ -3098,6 +3112,17 @@ async function testCloudConn() {
   } else {
     el.innerHTML = '<span style="color:var(--danger);">❌ 连接失败: ' + result.error + '</span>';
   }
+}
+
+
+// 复制 Gist ID
+function copyGistId(id) {
+  navigator.clipboard.writeText(id).then(() => {
+    showToast('Gist ID 已复制到剪贴板');
+    closeModal();
+  }).catch(() => {
+    showToast('复制失败，请手动选中复制', 'warning');
+  });
 }
 
 
