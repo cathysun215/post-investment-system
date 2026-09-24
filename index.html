@@ -2962,8 +2962,9 @@ function renderUsers() {
         <div class="btn-group">
           <button class="btn btn-primary" onclick="saveCloudConfig()">💾 保存配置</button>
           <button class="btn btn-outline" onclick="testCloudConn()">🔌 测试连接</button>
+          <button class="btn btn-outline" onclick="createGistNow()">🆕 创建云端存储</button>
+          <button class="btn btn-outline" onclick="syncToCloudNow()">☁️ 同步数据到云端</button>
           <button class="btn btn-outline" onclick="loadFromCloud()">🔄 从云端拉取</button>
-          <button class="btn btn-outline" onclick="syncToCloud()">☁️ 手动同步</button>
         </div>
         <div id="cloudStatus" style="margin-top:8px;font-size:.85rem;"></div>
       </div>
@@ -3130,6 +3131,44 @@ async function testCloudConn() {
   } else {
     el.innerHTML = '<span style="color:var(--danger);">❌ 连接失败: ' + result.error + '</span>';
   }
+}
+
+async function createGistNow() {
+  const el = document.getElementById('cloudStatus');
+  el.innerHTML = '<span style="color:var(--text-muted);">正在创建云端存储...</span>';
+  try {
+    const data = {
+      projects: JSON.parse(localStorage.getItem('pims_projects') || '[]'),
+      quarterly: JSON.parse(localStorage.getItem('pims_quarterly') || '[]'),
+      risks: JSON.parse(localStorage.getItem('pims_risks') || '[]'),
+      documents: JSON.parse(localStorage.getItem('pims_documents') || '[]'),
+      users: JSON.parse(localStorage.getItem('pims_users') || '[]'),
+      investReturns: JSON.parse(localStorage.getItem('pims_investReturns') || '[]'),
+      todos: JSON.parse(localStorage.getItem('pims_todos') || '[]'),
+      boardMeetings: JSON.parse(localStorage.getItem('pims_boardMeetings') || '[]'),
+      interviews: JSON.parse(localStorage.getItem('pims_interviews') || '[]'),
+      bizEvents: JSON.parse(localStorage.getItem('pims_bizEvents') || '[]'),
+      exitInfo: JSON.parse(localStorage.getItem('pims_exitInfo') || '[]'),
+      updatedAt: new Date().toISOString()
+    };
+    const ok = await CloudStore.save(data);
+    if (ok && CloudStore.gistId) {
+      el.innerHTML = '<span style="color:var(--success);">✅ 云端存储创建成功！Gist ID: <b>' + CloudStore.gistId + '</b></span>';
+      // 自动填入配置框
+      const gistInput = document.getElementById('cloud_gist');
+      if (gistInput) gistInput.value = CloudStore.gistId;
+      showToast('Gist ID 已生成并填入配置框，请点「保存配置」绑定');
+    } else {
+      el.innerHTML = '<span style="color:var(--danger);">❌ 创建失败，请检查 Token 权限</span>';
+    }
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--danger);">❌ 错误: ' + e.message + '</span>';
+  }
+}
+
+function syncToCloudNow() {
+  syncToCloud();
+  showToast('正在同步到云端...');
 }
 
 
